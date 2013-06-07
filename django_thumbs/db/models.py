@@ -6,12 +6,15 @@ https://github.com/madmw/django-thumbs
 A fork of django-thumbs [http://code.google.com/p/django-thumbs/] by Antonio Melé [http://django.es].
 
 """
-import cStringIO
+from django.conf import settings
+from django.conf.global_settings import INSTALLED_APPS
+from django.core.files.base import ContentFile
 from django.db.models import ImageField
 from django.db.models.fields.files import ImageFieldFile
-from django.core.files.base import ContentFile
-from django.conf import settings
-from django_thumbs.settings import THUMBS_GENERATE_ANY_SIZE, THUMBS_GENERATE_MISSING_THUMBNAILS, THUMBS_GENERATE_THUMBNAILS
+from django_thumbs.settings import THUMBS_GENERATE_ANY_SIZE, \
+    THUMBS_GENERATE_MISSING_THUMBNAILS, THUMBS_GENERATE_THUMBNAILS
+from os.path import join, normpath
+import cStringIO
 
 try:
     from PIL import Image, ImageOps
@@ -34,13 +37,12 @@ def generate_thumb(original, size, format='JPEG'):
     image = Image.open(original)
     if image.mode not in ('L', 'RGB', 'RGBA'):
         image = image.convert('RGB')
-    thumbnail = ImageOps.fit(image, size, Image.ANTIALIAS)
+    image.thumbnail(size, Image.ANTIALIAS)
     io = cStringIO.StringIO()
     if format.upper() == 'JPG':
         format = 'JPEG'
-    thumbnail.save(io, format)
+    image.save(io, format)
     return ContentFile(io.getvalue())
-
 
 class ImageWithThumbsFieldFile(ImageFieldFile):
     """Django `ImageField` replacement with automatic generation of thumbnail images.
@@ -110,27 +112,28 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
         Arguments:
         image -- An `File` object with the image in its original size.
         size  -- A tuple with the desired width and height. Example: (100, 100)
-
+        
+        Returns:
+        The actual file name of the saved thumbnail
         """
+        # change the upload_to directory to support a different directory for storing thumbnails
+        self.name = normpath(join(settings.THUMBNAIL_UPLOAD_TO, self.name[self.name.find('/') + 1:]))
         base, extension = self.name.rsplit('.', 1)
         thumb_name = self.THUMB_SUFFIX % (base, size[0], size[1], extension)
         thumbnail = generate_thumb(image, size, extension)
         saved_as = self.storage.save(thumb_name, thumbnail)
         if thumb_name != saved_as:
-            raise ValueError('There is already a file named %s' % thumb_name)
+            print('Warning while saving thumbnail: There is already a file named %s. New file saved as %s' % (thumb_name, saved_as))
+        return saved_as
 
     def save(self, name, content, save=True):
         super(ImageFieldFile, self).save(name, content, save)
+        print('Original image saved at ' + self.name)
         if THUMBS_GENERATE_THUMBNAILS:
             if self.field.sizes:
                 for size in self.field.sizes:
-                    try:
-                        self._generate_thumb(content, size)
-                    except:
-                        if settings.DEBUG:
-                            import sys
-                            print "Exception generating thumbnail"
-                            print sys.exc_info()
+                    saved_thumb_as = self._generate_thumb(content, size)
+                    print('Thumbnail image saved at ' + saved_thumb_as)
 
     def delete(self, save=True):
         if self.name and self.field.sizes:
@@ -230,3 +233,12 @@ class ImageWithThumbsField(ImageField):
         self.height_field = height_field
         self.sizes = sizes
         super(ImageField, self).__init__(**kwargs)
+
+# Add south custom field introspection rules to support database migration only if south is present and available
+try:
+    import south
+except ImportError:
+    south = None
+if south is not None and 'south' in settings.INSTALLED_APPS:
+    from south.modelsinspector import add_introspection_rules
+    add_introspection_rules([], ["^django_thumbs\.db\.models\.ImageWithThumbsField"])
