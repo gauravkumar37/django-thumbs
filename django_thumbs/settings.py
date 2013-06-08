@@ -15,3 +15,7 @@ THUMBS_GENERATE_MISSING_THUMBNAILS = getattr(settings, "THUMBS_GENERATE_MISSING_
 # Generate the thumbnail even if it's not in the configured `sizes` argument.
 # Default: False
 THUMBS_GENERATE_ANY_SIZE = getattr(settings, "THUMBS_GENERATE_ANY_SIZE", False)
+
+# Generate the thumbnail preserving the original ratio of the image intact
+# Default: False
+THUMBS_PRESERVE_RATIO = getattr(settings, "THUMBS_PRESERVE_RATIO", False)

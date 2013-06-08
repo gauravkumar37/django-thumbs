@@ -11,25 +11,23 @@ from django.conf.global_settings import INSTALLED_APPS
 from django.core.files.base import ContentFile
 from django.db.models import ImageField
 from django.db.models.fields.files import ImageFieldFile
-from django_thumbs.settings import THUMBS_GENERATE_ANY_SIZE, \
-    THUMBS_GENERATE_MISSING_THUMBNAILS, THUMBS_GENERATE_THUMBNAILS
 from os.path import join, normpath
 import cStringIO
 
 try:
     from PIL import Image, ImageOps
 except:
-    # Mac OSX
+    # Mac OS X
     import Image, ImageOps
 
-
-def generate_thumb(original, size, format='JPEG'):
+def generate_thumb(original, size, preserve_ratio, format='JPEG'):
     """
     Generates a thumbnail image and returns a ContentFile object with the thumbnail
 
     Arguments:
     original -- The image being resized as `File`.
     size     -- Desired thumbnail size as `tuple`. Example: (70, 100)
+    preserve_ratio    -- True for resizing the image, False for cropping the image
     format   -- Format of the original image ('JPEG', 'PNG', ...) The thumbnail will be generated using this same format.
 
     """
@@ -37,7 +35,12 @@ def generate_thumb(original, size, format='JPEG'):
     image = Image.open(original)
     if image.mode not in ('L', 'RGB', 'RGBA'):
         image = image.convert('RGB')
-    image.thumbnail(size, Image.ANTIALIAS)
+    if preserve_ratio:
+        # resize the image
+        image.thumbnail(size, Image.ANTIALIAS)
+    else:
+        # crop the image the fit the size specified
+        image = ImageOps.fit(image, size, Image.ANTIALIAS)
     io = cStringIO.StringIO()
     if format.upper() == 'JPG':
         format = 'JPEG'
@@ -57,7 +60,7 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
 
     def _url_for_size(self, size):
         """Return a URL pointing to the thumbnail image of the requested size.
-        If `THUMBS_GENERATE_MISSING_THUMBNAILS` is True, the thumbnail will be created if it doesn't exist on disk.
+        If `settings.THUMBS_GENERATE_MISSING_THUMBNAILS` is True, the thumbnail will be created if it doesn't exist on disk.
             
         Arguments:
         size  -- A tuple with the desired width and height. Example: (100, 100)
@@ -69,7 +72,7 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
             # generate missing thumbnail if needed
             fileBase, extension = self.name.rsplit('.', 1)
             thumb_file = self.THUMB_SUFFIX % (fileBase, size[0], size[1], extension)
-            if THUMBS_GENERATE_MISSING_THUMBNAILS:
+            if settings.THUMBS_GENERATE_MISSING_THUMBNAILS:
                 if not self.storage.exists(thumb_file):
                     try:
                         self._generate_thumb(self.storage.open(self.name), size)
@@ -95,7 +98,7 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
         width, height = sizeStr.split("x")
         requestedSize = (int(width), int(height))
         acceptedSize = None
-        if THUMBS_GENERATE_ANY_SIZE:
+        if settings.THUMBS_GENERATE_ANY_SIZE:
             acceptedSize = requestedSize
         else:
             for configuredSize in self.field.sizes:
@@ -117,10 +120,10 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
         The actual file name of the saved thumbnail
         """
         # change the upload_to directory to support a different directory for storing thumbnails
-        self.name = normpath(join(settings.THUMBNAIL_UPLOAD_TO, self.name[self.name.find('/') + 1:]))
+        self.name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
         base, extension = self.name.rsplit('.', 1)
         thumb_name = self.THUMB_SUFFIX % (base, size[0], size[1], extension)
-        thumbnail = generate_thumb(image, size, extension)
+        thumbnail = generate_thumb(image, size, self.field.preserve_ratio, extension)
         saved_as = self.storage.save(thumb_name, thumbnail)
         if thumb_name != saved_as:
             print('Warning while saving thumbnail: There is already a file named %s. New file saved as %s' % (thumb_name, saved_as))
@@ -128,12 +131,14 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
 
     def save(self, name, content, save=True):
         super(ImageFieldFile, self).save(name, content, save)
-        print('Original image saved at ' + self.name)
-        if THUMBS_GENERATE_THUMBNAILS:
+        if settings.DEBUG:
+            print('Original image saved at ' + self.name)
+        if settings.THUMBS_GENERATE_THUMBNAILS:
             if self.field.sizes:
                 for size in self.field.sizes:
                     saved_thumb_as = self._generate_thumb(content, size)
-                    print('Thumbnail image saved at ' + saved_thumb_as)
+                    if settings.DEBUG:
+                        print('Thumbnail image saved at ' + saved_thumb_as)
 
     def delete(self, save=True):
         if self.name and self.field.sizes:
@@ -226,12 +231,19 @@ class ImageWithThumbsField(ImageField):
     """
     attr_class = ImageWithThumbsFieldFile
 
-    def __init__(self, verbose_name=None, name=None, width_field=None, height_field=None, sizes=None, **kwargs):
+    def __init__(self, verbose_name=None, name=None, width_field=None, height_field=None, sizes=None, preserve_ratio=None, upload_thumb_to=None, ** kwargs):
         self.verbose_name = verbose_name
         self.name = name
         self.width_field = width_field
         self.height_field = height_field
         self.sizes = sizes
+        if preserve_ratio is None:
+            preserve_ratio = settings.THUMBS_PRESERVE_RATIO
+        self.preserve_ratio = preserve_ratio
+        if upload_thumb_to is None:
+            self.upload_thumb_to = kwargs['upload_to']
+        else:
+            self.upload_thumb_to = upload_thumb_to
         super(ImageField, self).__init__(**kwargs)
 
 # Add south custom field introspection rules to support database migration only if south is present and available
