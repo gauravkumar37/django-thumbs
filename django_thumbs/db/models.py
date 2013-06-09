@@ -69,20 +69,27 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
         if not self:
             return ''
         else:
+            # change the upload_to directory to support a different directory for storing thumbnails
+            thumb_name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
             # generate missing thumbnail if needed
-            fileBase, extension = self.name.rsplit('.', 1)
+            fileBase, extension = thumb_name.rsplit('.', 1)
             thumb_file = self.THUMB_SUFFIX % (fileBase, size[0], size[1], extension)
             if settings.THUMBS_GENERATE_MISSING_THUMBNAILS:
                 if not self.storage.exists(thumb_file):
                     try:
-                        self._generate_thumb(self.storage.open(self.name), size)
+                        self._generate_thumb(self.storage.open(thumb_name), size)
                     except:
                         if settings.DEBUG:
                             import sys
                             print "Exception generating thumbnail"
                             print sys.exc_info()
+            # change the upload_to directory to support a different directory for storing thumbnails
+            # in order to generate correct URL for thumbnail, change self.name temporarily, and then restore it afterwards
+            name_old = self.name
+            self.name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
             urlBase, extension = self.url.rsplit('.', 1)
             thumb_url = self.THUMB_SUFFIX % (urlBase, size[0], size[1], extension)
+            self.name = name_old
             return thumb_url
 
     def __getattr__(self, name):
@@ -109,19 +116,18 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
             return self._url_for_size(acceptedSize)
         raise ValueError("The requested thumbnail size %s doesn't exist" % sizeStr)
 
-    def _generate_thumb(self, image, size):
+    def _generate_thumb(self, thumb_name, image, size):
         """Generates a thumbnail of `size`.
         
         Arguments:
+        thumb_name --- The filename of the thumbnail
         image -- An `File` object with the image in its original size.
         size  -- A tuple with the desired width and height. Example: (100, 100)
         
         Returns:
         The actual file name of the saved thumbnail
         """
-        # change the upload_to directory to support a different directory for storing thumbnails
-        self.name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
-        base, extension = self.name.rsplit('.', 1)
+        base, extension = thumb_name.rsplit('.', 1)
         thumb_name = self.THUMB_SUFFIX % (base, size[0], size[1], extension)
         thumbnail = generate_thumb(image, size, self.field.preserve_ratio, extension)
         saved_as = self.storage.save(thumb_name, thumbnail)
@@ -135,8 +141,10 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
             print('Original image saved at ' + self.name)
         if settings.THUMBS_GENERATE_THUMBNAILS:
             if self.field.sizes:
+                # change the upload_to directory to support a different directory for storing thumbnails
+                thumb_name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
                 for size in self.field.sizes:
-                    saved_thumb_as = self._generate_thumb(content, size)
+                    saved_thumb_as = self._generate_thumb(thumb_name, content, size)
                     if settings.DEBUG:
                         print('Thumbnail image saved at ' + saved_thumb_as)
 
@@ -158,6 +166,8 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
         """
         """
         if self.field.sizes:
+            # change the upload_to directory to support a different directory for storing thumbnails
+            self.name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
             for size in self.field.sizes:
                 try:
                     self._generate_thumb(self.storage.open(self.name), size)
