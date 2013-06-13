@@ -70,7 +70,7 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
             return ''
         else:
             # change the upload_to directory to support a different directory for storing thumbnails
-            thumb_name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
+            thumb_name = normpath(join(self.field.upload_thumb_to, self.name[self.name.rfind('/') + 1:]))
             # generate missing thumbnail if needed
             fileBase, extension = thumb_name.rsplit('.', 1)
             thumb_file = self.THUMB_SUFFIX % (fileBase, size[0], size[1], extension)
@@ -86,7 +86,7 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
             # change the upload_to directory to support a different directory for storing thumbnails
             # in order to generate correct URL for thumbnail, change self.name temporarily, and then restore it afterwards
             name_old = self.name
-            self.name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
+            self.name = normpath(join(self.field.upload_thumb_to, self.name[self.name.rfind('/') + 1:]))
             urlBase, extension = self.url.rsplit('.', 1)
             thumb_url = self.THUMB_SUFFIX % (urlBase, size[0], size[1], extension)
             self.name = name_old
@@ -142,7 +142,7 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
         if settings.THUMBS_GENERATE_THUMBNAILS:
             if self.field.sizes:
                 # change the upload_to directory to support a different directory for storing thumbnails
-                thumb_name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
+                thumb_name = normpath(join(self.field.upload_thumb_to, self.name[self.name.rfind('/') + 1:]))
                 for size in self.field.sizes:
                     saved_thumb_as = self._generate_thumb(thumb_name, content, size)
                     if settings.DEBUG:
@@ -167,7 +167,7 @@ class ImageWithThumbsFieldFile(ImageFieldFile):
         """
         if self.field.sizes:
             # change the upload_to directory to support a different directory for storing thumbnails
-            self.name = normpath(join(self.field.upload_thumb_to, self.name[self.name.find('/') + 1:]))
+            self.name = normpath(join(self.field.upload_thumb_to, self.name[self.name.rfind('/') + 1:]))
             for size in self.field.sizes:
                 try:
                     self._generate_thumb(self.storage.open(self.name), size)
