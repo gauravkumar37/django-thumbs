@@ -263,4 +263,10 @@ except ImportError:
     south = None
 if south is not None and 'south' in settings.INSTALLED_APPS:
     from south.modelsinspector import add_introspection_rules
-    add_introspection_rules([], ["^django_thumbs\.db\.models\.ImageWithThumbsField"])
+    add_introspection_rules([
+        (
+            [ImageWithThumbsField],  # Class(es) these apply to
+            [],  # Positional arguments (not used)
+            {},
+        ),
+    ], ["^django_thumbs\.db\.models\.ImageWithThumbsField"])
